@@ -44,6 +44,9 @@ KEYS = {
     "em-clear-seeds": "shift+keyc",
     "em-undo": "shift+keyu",
 }
+SEED_LAYERS = {"A": "seeds-A", "B": "seeds-B"}
+SEED_COLORS = {"A": "#000000", "B": "#ffffff" }
+SEED_RADIUS_FRACTION = 0.2  # of the smallest block side, so a marker never outgrows its block
 HELP_TEXT = (
     "Shift+M merge the 2 selected objects | Shift+A / Shift+B add seed A / B under the mouse | "
     "Shift+X split | Shift+C clear seeds | Shift+U undo"
@@ -58,6 +61,9 @@ class Session:
     token: str
     viewer: object
     seeds: dict[str, list[int]] = field(default_factory=lambda: {"A": [], "B": []})
+    seed_points: dict[str, list[tuple[int, int, int]]] = field(
+        default_factory=lambda: {"A": [], "B": []}
+    )  # (x, y, z) voxels where each seed was placed, for the markers
 
 
 class ViewerApp:
@@ -70,6 +76,7 @@ class ViewerApp:
         port: int,
         tokens: tuple[str, ...],
         mode: str,
+        block_size: tuple[int, int, int] = (8, 64, 64),
         ng=None,
     ):
         self.ng = ng or importlib.import_module("neuroglancer")
@@ -83,6 +90,10 @@ class ViewerApp:
         # Neuroglancer wants (x, y, z) order, matching the dimension names below.
         sz, sy, sx = voxel_size_zyx
         self.dims = self.ng.CoordinateSpace(names=["x", "y", "z"], units="nm", scales=[sx, sy, sz])
+        # Seed marker radius per axis (x, y, z), in voxels of that axis: a true sphere in nm.
+        bz, by, bx = block_size
+        radius_nm = SEED_RADIUS_FRACTION * min(bz * sz, by * sy, bx * sx)
+        self._seed_radii = [radius_nm / sx, radius_nm / sy, radius_nm / sz]
         self._bricks_xyz = service.graph.model.bricks.transpose(2, 1, 0)  # a view, no copy
         self._display = np.ascontiguousarray(service.graph.lut[self._bricks_xyz])  # what Neuroglancer shows
         em_xyz = np.ascontiguousarray(raw_zyx.transpose(2, 1, 0))
@@ -189,6 +200,8 @@ class ViewerApp:
             return
         if brick not in session.seeds[side]:
             session.seeds[side].append(brick)
+            session.seed_points[side].append((x, y, z))
+            self._draw_seeds(session)
         obj = self.service.object_of(brick)
         others = {self.service.object_of(b) for b in session.seeds["A"] + session.seeds["B"]}
         note = "" if len(others) == 1 else "  WARNING: seeds are on different objects."
@@ -197,14 +210,42 @@ class ViewerApp:
             f"Seed {side} on object {obj}. Now {len(session.seeds['A'])} A and {len(session.seeds['B'])} B seeds.{note}",
         )
 
+    def _draw_seeds(self, session: Session) -> None:
+        """Redraw the A / B marker layers (spheres, so they show in nearby 2D slices too)."""
+        with session.viewer.txn() as s:
+            for side, layer_name in SEED_LAYERS.items():
+                points = session.seed_points[side]
+                if not points:
+                    if layer_name in s.layers:
+                        del s.layers[layer_name]
+                    continue
+                s.layers[layer_name] = self.ng.LocalAnnotationLayer(
+                    dimensions=self.dims,
+                    annotation_color=SEED_COLORS[side],
+                    annotations=[
+                        self.ng.EllipsoidAnnotation(
+                            id=f"{side}{i}", center=[x + 0.5, y + 0.5, z + 0.5], radii=self._seed_radii
+                        )
+                        for i, (x, y, z) in enumerate(points)
+                    ],
+                )
+
+    def _reset_seeds(self, session: Session) -> None:
+        session.seeds = {"A": [], "B": []}
+        session.seed_points = {"A": [], "B": []}
+        try:
+            self._draw_seeds(session)
+        except Exception:  # noqa: BLE001
+            log.exception("Could not remove seed markers for %s", session.label)
+
     def _split(self, session: Session, action_state) -> None:
         result = self.service.split(session.seeds["A"], session.seeds["B"], user=session.label)
         if result.ok:
-            session.seeds = {"A": [], "B": []}
+            self._reset_seeds(session)
         self._report(session, result)
 
     def _clear_seeds(self, session: Session, action_state) -> None:
-        session.seeds = {"A": [], "B": []}
+        self._reset_seeds(session)
         self._say(session, "Seeds cleared.")
 
     def _undo(self, session: Session, action_state) -> None:
@@ -235,7 +276,7 @@ class ViewerApp:
             except Exception:  # noqa: BLE001
                 log.exception("Could not update selection for %s", session.label)
             if session is not editor:
-                session.seeds = {"A": [], "B": []}  # old seeds may no longer be meaningful
+                self._reset_seeds(session)  # old seeds may no longer be meaningful
 
     # ----- small helper ---------------------------------------------------
     def _say(self, session: Session, text: str, seconds: float = 10.0) -> None:

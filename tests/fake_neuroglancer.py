@@ -39,6 +39,16 @@ class SegmentationLayer:
         self.segments = set()
 
 
+class LocalAnnotationLayer:
+    def __init__(self, dimensions=None, annotations=None, annotation_color=None):
+        self.dimensions, self.annotations, self.annotation_color = dimensions, annotations or [], annotation_color
+
+
+class EllipsoidAnnotation:
+    def __init__(self, id, center, radii):
+        self.id, self.center, self.radii = id, center, radii
+
+
 class _Actions:
     def __init__(self):
         self.handlers = {}
