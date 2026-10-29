@@ -7,13 +7,6 @@ saved so they are still there after a restart.
 
 The plan and the reasons behind each choice are in `PLAN.md`.
 
-> **Important: what has and has not been tested.**
-> The graph, merge, split, undo, saving, settings and download code are covered by
-> automated tests (`pytest`, 49 tests). The code that talks to the *real* Neuroglancer
-> and the *real* HDF5 file (`src/viewer.py`, the HDF5 part of `src/data.py`) was written
-> without being able to install those packages, and was only tested against a stand-in.
-> Run through "First things to check" below on your first start.
-
 ---
 
 ## Using the viewer
