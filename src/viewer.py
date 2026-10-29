@@ -45,8 +45,8 @@ KEYS = {
     "em-undo": "shift+keyu",
 }
 SEED_LAYERS = {"A": "seeds-A", "B": "seeds-B"}
-SEED_COLORS = {"A": "#000000", "B": "#ffffff" }
-SEED_RADIUS_FRACTION = 0.2  # of the smallest block side, so a marker never outgrows its block
+SEED_COLORS = {"A": "#650303", "B": "#ffffff" }
+SEED_RADIUS_FRACTION = 0.08  # of the smallest block side, so a marker never outgrows its block
 HELP_TEXT = (
     "Shift+M merge the 2 selected objects | Shift+A / Shift+B add seed A / B under the mouse | "
     "Shift+X split | Shift+C clear seeds | Shift+U undo"
