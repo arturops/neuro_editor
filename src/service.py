@@ -22,6 +22,7 @@ class EditResult:
     warning: str | None = None
     edit_id: int | None = None
     changed: bool = False
+    code: str | None = None  # machine-readable reason for a refusal, so callers can add their own hints
 
 
 class EditService:
@@ -116,7 +117,9 @@ class EditService:
                 return EditResult(False, "All seeds must be on the same object.")
             if set(bricks_a) & set(bricks_b):
                 return EditResult(
-                    False, "An A seed and a B seed fall in the same small piece. Move one of them further apart."
+                    False,
+                    "An A seed and a B seed fall in the same small piece. Move one of them further apart.",
+                    code="seeds_overlap",
                 )
             obj = next(iter(objects))
             cut = self.graph.find_cut(bricks_a, bricks_b)

@@ -131,6 +131,47 @@ def test_seeds_on_different_objects_warn(svc):
     assert one.seeds == {"A": [], "B": []}
 
 
+def test_remove_seed_removes_only_the_seed_under_the_mouse(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-b", A_RIGHT)
+    press(app, one, "em-remove-seed", A_RIGHT)
+    assert len(one.seeds["B"]) == 0 and one.seed_points["B"] == []
+    assert len(one.seeds["A"]) == 1 and len(one.seed_points["A"]) == 1
+    assert "Removed seed B" in message(one)
+    assert "seeds-B" not in one.viewer.state.layers and "seeds-A" in one.viewer.state.layers
+
+
+def test_remove_seed_far_from_any_marker_or_without_mouse_changes_nothing(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-remove-seed", B_SPOT)
+    assert "No seed under the mouse" in message(one) and len(one.seeds["A"]) == 1
+    press(app, one, "em-remove-seed", spot=None)
+    assert "Hover" in message(one) and len(one.seeds["A"]) == 1
+
+
+def test_split_with_seeds_in_same_piece_mentions_how_to_fix_it(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-b", A_LEFT)
+    press(app, one, "em-split")
+    assert "same small piece" in message(one)
+    assert "Shift+R" in message(one) and "Shift+C" in message(one)
+
+
+def test_second_seed_in_same_piece_is_refused_with_an_explanation(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-a", A_LEFT)
+    assert len(one.seeds["A"]) == 1 and len(one.seed_points["A"]) == 1
+    assert "already placed" in message(one) and "Shift+R" in message(one)
+
+
 def test_edit_log_uses_user_labels_not_secret_tokens(svc):
     app, _ = make_app(svc)
     press(app, app.sessions[1], "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})

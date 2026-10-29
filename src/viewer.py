@@ -42,6 +42,7 @@ KEYS = {
     "em-seed-b": "shift+keyb",
     "em-split": "shift+keyx",
     "em-clear-seeds": "shift+keyc",
+    "em-remove-seed": "shift+keyr",
     "em-undo": "shift+keyu",
 }
 SEED_LAYERS = {"A": "seeds-A", "B": "seeds-B"}
@@ -49,8 +50,9 @@ SEED_COLORS = {"A": "#650303", "B": "#ffffff" }
 SEED_RADIUS_FRACTION = 0.08  # of the smallest block side, so a marker never outgrows its block
 HELP_TEXT = (
     "Shift+M merge the 2 selected objects | Shift+A / Shift+B add seed A / B under the mouse | "
-    "Shift+X split | Shift+C clear seeds | Shift+U undo"
+    "Shift+X split | Shift+C clear seeds | Shift+R remove seed under the mouse | Shift+U undo"
 )
+OVERLAP_HINT = "  Hover a seed and press Shift+R to remove it, or press Shift+C to clear all seeds."
 
 
 @dataclass
@@ -94,6 +96,8 @@ class ViewerApp:
         bz, by, bx = block_size
         radius_nm = SEED_RADIUS_FRACTION * min(bz * sz, by * sy, bx * sx)
         self._seed_radii = [radius_nm / sx, radius_nm / sy, radius_nm / sz]
+        self._seed_radius_nm = radius_nm
+        self._scales_xyz = np.array([sx, sy, sz])
         self._bricks_xyz = service.graph.model.bricks.transpose(2, 1, 0)  # a view, no copy
         self._display = np.ascontiguousarray(service.graph.lut[self._bricks_xyz])  # what Neuroglancer shows
         em_xyz = np.ascontiguousarray(raw_zyx.transpose(2, 1, 0))
@@ -150,6 +154,7 @@ class ViewerApp:
             "em-seed-b": lambda sess, st: self._add_seed(sess, st, "B"),
             "em-split": self._split,
             "em-clear-seeds": self._clear_seeds,
+            "em-remove-seed": self._remove_seed,
             "em-undo": self._undo,
         }
         viewer = session.viewer
@@ -198,16 +203,47 @@ class ViewerApp:
         if brick == 0:
             self._say(session, "No cell under the mouse. Move onto a cell and try again.")
             return
-        if brick not in session.seeds[side]:
-            session.seeds[side].append(brick)
-            session.seed_points[side].append((x, y, z))
-            self._draw_seeds(session)
         obj = self.service.object_of(brick)
+        if brick in session.seeds[side]:  # seeds are per piece; never move an existing one behind the user's back
+            self._say(
+                session,
+                f"Seed {side} already placed in this piece (object {obj}). "
+                "Shift+R on it to remove it, then place it again.",
+            )
+            return
+        session.seeds[side].append(brick)
+        session.seed_points[side].append((x, y, z))
+        self._draw_seeds(session)
         others = {self.service.object_of(b) for b in session.seeds["A"] + session.seeds["B"]}
         note = "" if len(others) == 1 else "  WARNING: seeds are on different objects."
         self._say(
             session,
             f"Seed {side} on object {obj}. Now {len(session.seeds['A'])} A and {len(session.seeds['B'])} B seeds.{note}",
+        )
+
+    def _remove_seed(self, session: Session, action_state) -> None:
+        """Remove the seed whose marker is under the mouse (the nearest one, if several overlap)."""
+        coords = getattr(action_state, "mouse_voxel_coordinates", None)
+        if coords is None:
+            self._say(session, "Hover the mouse over a seed marker, then press the key again.")
+            return
+        mouse = np.asarray(coords[:3], dtype=np.float64)
+        best = None  # (distance in nm, side, index)
+        for side, points in session.seed_points.items():
+            for index, (x, y, z) in enumerate(points):
+                distance = float(np.linalg.norm((mouse - (np.array([x, y, z]) + 0.5)) * self._scales_xyz))
+                if distance <= self._seed_radius_nm and (best is None or distance < best[0]):
+                    best = (distance, side, index)
+        if best is None:
+            self._say(session, "No seed under the mouse. Hover over a seed marker and try again.")
+            return
+        _, side, index = best
+        del session.seeds[side][index]  # seeds and seed_points are kept in step
+        del session.seed_points[side][index]
+        self._draw_seeds(session)
+        self._say(
+            session,
+            f"Removed seed {side}. Now {len(session.seeds['A'])} A and {len(session.seeds['B'])} B seeds.",
         )
 
     def _draw_seeds(self, session: Session) -> None:
@@ -242,7 +278,7 @@ class ViewerApp:
         result = self.service.split(session.seeds["A"], session.seeds["B"], user=session.label)
         if result.ok:
             self._reset_seeds(session)
-        self._report(session, result)
+        self._report(session, result, hint=OVERLAP_HINT if result.code == "seeds_overlap" else "")
 
     def _clear_seeds(self, session: Session, action_state) -> None:
         self._reset_seeds(session)
@@ -251,8 +287,8 @@ class ViewerApp:
     def _undo(self, session: Session, action_state) -> None:
         self._report(session, self.service.undo(user=session.label))
 
-    def _report(self, session: Session, result: EditResult) -> None:
-        text = result.message + (f"  NOTE: {result.warning}" if result.warning else "")
+    def _report(self, session: Session, result: EditResult, hint: str = "") -> None:
+        text = result.message + hint + (f"  NOTE: {result.warning}" if result.warning else "")
         self._say(session, text)
 
     # ----- redraw after every edit ----------------------------------------
