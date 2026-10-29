@@ -1,0 +1,10 @@
+data/
+tests/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+PLAN.md
+uv.lock
+.venv
+pyproject.toml

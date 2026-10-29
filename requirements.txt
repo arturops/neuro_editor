@@ -1,0 +1,6 @@
+# Pin exact versions (pip freeze) once the app has run on your machine / Fly.
+neuroglancer
+numpy
+scipy
+h5py
+networkx

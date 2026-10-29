@@ -1,0 +1,23 @@
+[project]
+name = "em-viewer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Arturo Parrales", email = "arturo.ps14@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "h5py>=3.16.0",
+    "networkx>=3.6.1",
+    "neuroglancer>=2.41.2",
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
+]
+
+[project.scripts]
+em-viewer = "em_viewer:main"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"

@@ -1,0 +1,149 @@
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+import fake_neuroglancer as fake
+from conftest import A_LEFT, A_RIGHT, B_SPOT, C_SPOT
+from viewer import KEYS, SEG_LAYER, ViewerApp
+
+
+def make_app(svc, mode="per_user", tokens=("tok-one", "tok-two", "tok-three")):
+    raw = np.zeros((6, 16, 40), dtype=np.uint8)
+    app = ViewerApp(svc, raw, (40.0, 4.0, 4.0), "https://em.example.fly.dev/", 8080, tokens, mode, ng=fake)
+    links = app.start()
+    return app, links
+
+
+def press(app, session, action, spot=None, selected=()):
+    """Pretend a user pressed the key for `action` while the mouse was over voxel `spot` (z, y, x)."""
+    z, y, x = spot if spot else (0, 0, 0)
+    state = SimpleNamespace(
+        viewer_state=SimpleNamespace(layers={SEG_LAYER: SimpleNamespace(segments=set(selected))}),
+        mouse_voxel_coordinates=None if spot is None else np.array([x + 0.4, y + 0.4, z + 0.4]),
+    )
+    session.viewer.actions.handlers[action](state)
+
+
+def message(session):
+    return session.viewer.config_state.status_messages.get("em-msg", "")
+
+
+def shown(app, spot):
+    z, y, x = spot
+    return int(app._display[x, y, z])  # Neuroglancer's array is (x, y, z)
+
+
+def test_start_binds_all_interfaces_and_builds_public_links(svc):
+    fake.bind_calls.clear()
+    app, links = make_app(svc)
+    assert fake.bind_calls == [("0.0.0.0", 8080)]
+    assert links == [(f"user{i + 1}", f"https://em.example.fly.dev/v/{t}/") for i, t in enumerate(("tok-one", "tok-two", "tok-three"))]
+    for session in app.sessions:
+        assert set(session.viewer.config_state.input_event_bindings.viewer) == set(KEYS.values())
+        assert set(session.viewer.actions.handlers) == set(KEYS)
+
+
+def test_shared_mode_makes_one_viewer(svc):
+    app, links = make_app(svc, mode="shared")
+    assert len(app.sessions) == 1 and links[0][0] == "shared" and "/v/tok-one/" in links[0][1]
+
+
+def test_layers_use_the_nanometre_voxel_size(svc):
+    app, _ = make_app(svc)
+    assert app.dims.names == ["x", "y", "z"] and app.dims.scales == [4.0, 4.0, 40.0] and app.dims.units == "nm"
+    assert app._display.shape == (40, 16, 6)  # (x, y, z)
+
+
+def test_merge_with_two_selected_objects_repaints_and_selects_result(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    a, c = svc.object_of(svc.brick_at(*A_LEFT)), svc.object_of(svc.brick_at(*C_SPOT))
+    assert shown(app, A_LEFT) == a and shown(app, C_SPOT) == c
+    press(app, one, "em-merge", selected={a, c})
+    assert shown(app, A_LEFT) == shown(app, C_SPOT)
+    assert app._seg_volume.invalidations == 1
+    assert one.viewer.state.layers[SEG_LAYER].segments == {shown(app, A_LEFT)}
+    assert "Merged" in message(one)
+
+
+def test_merge_needs_exactly_two_selected(svc):
+    app, _ = make_app(svc)
+    press(app, app.sessions[0], "em-merge", selected={1})
+    assert "exactly two" in message(app.sessions[0])
+    assert app._seg_volume.invalidations == 0
+
+
+def test_split_with_seeds_repaints_both_halves(svc):
+    app, _ = make_app(svc)
+    one, two = app.sessions[0], app.sessions[1]
+    whole = shown(app, A_LEFT)
+    two.viewer.state.layers[SEG_LAYER].segments = {whole}  # user 2 is looking at this object
+
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-b", A_RIGHT)
+    assert "1 A and 1 B" in message(one)
+    press(app, one, "em-split")
+
+    left, right = shown(app, A_LEFT), shown(app, A_RIGHT)
+    assert left != right
+    assert one.viewer.state.layers[SEG_LAYER].segments == {left, right}  # editor sees both halves
+    assert one.seeds == {"A": [], "B": []}
+    # the other user keeps looking at "their" object: the half that holds its old number
+    assert two.viewer.state.layers[SEG_LAYER].segments == {whole}
+    assert app._seg_volume.invalidations == 1
+
+
+def test_undo_restores_the_picture(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    start = app._display.copy()
+    press(app, one, "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    assert not (app._display == start).all()
+    press(app, one, "em-undo")
+    assert (app._display == start).all()
+    assert app._seg_volume.invalidations == 2
+
+
+def test_seed_on_empty_space_or_without_mouse_is_refused(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-seed-a", (3, 0, 0))  # y=0 is background in the made-up brain
+    assert "No cell" in message(one) and one.seeds["A"] == []
+    press(app, one, "em-seed-a", spot=None)
+    assert "Hover" in message(one)
+
+
+def test_split_without_seeds_explains_itself_and_changes_nothing(svc):
+    app, _ = make_app(svc)
+    press(app, app.sessions[0], "em-split")
+    assert "at least one A seed" in message(app.sessions[0])
+    assert app._seg_volume.invalidations == 0
+
+
+def test_seeds_on_different_objects_warn(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-b", B_SPOT)
+    assert "different objects" in message(one)
+    press(app, one, "em-clear-seeds")
+    assert one.seeds == {"A": [], "B": []}
+
+
+def test_edit_log_uses_user_labels_not_secret_tokens(svc):
+    app, _ = make_app(svc)
+    press(app, app.sessions[1], "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    users = {row[0] for row in svc.store._conn.execute("SELECT DISTINCT user FROM edge_events")}
+    assert users == {"user2"}
+
+
+def test_a_crashing_action_is_reported_not_raised(svc, monkeypatch):
+    app, _ = make_app(svc)
+
+    def boom(*a, **k):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(svc, "merge", boom)
+    press(app, app.sessions[0], "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    assert "kaboom" in message(app.sessions[0])
