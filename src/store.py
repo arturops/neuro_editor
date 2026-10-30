@@ -105,6 +105,13 @@ class EditStore:
             self._conn.execute("UPDATE edge_events SET undone=1 WHERE edit_id=?", (row[0],))
         return int(row[0]), str(row[1])
 
+    def undo_all(self) -> int:
+        """Mark every edit as undone (the log is kept for the record). Returns how many edits that was."""
+        with self._conn:
+            count = self.edit_count()
+            self._conn.execute("UPDATE edge_events SET undone=1 WHERE undone=0")
+        return count
+
     def edit_count(self) -> int:
         return int(self._conn.execute("SELECT COUNT(DISTINCT edit_id) FROM edge_events WHERE undone=0").fetchone()[0])
 

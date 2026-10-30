@@ -133,6 +133,25 @@ class EditService:
                 select=lambda: tuple(sorted({self.graph.object_of(bricks_a[0]), self.graph.object_of(bricks_b[0])})),
             )
 
+    def edit_count(self) -> int:
+        with self._lock:
+            return self.store.edit_count()
+
+    def reset_all(self, user: str = "unknown") -> EditResult:
+        """Undo every edit, for everyone. Cannot itself be undone (the log keeps the history)."""
+        with self._lock:
+            count = self.store.undo_all()
+            if count == 0:
+                return EditResult(False, "No edits to reset.")
+            self._replay()  # back to the starting glue
+            self.version += 1
+            result = EditResult(
+                True, f"Reset: undid all {count} edit{'s' if count != 1 else ''}. Back to the original data.", changed=True
+            )
+            for listener in list(self._listeners):
+                listener(result)
+            return result
+
     def undo(self, user: str = "unknown") -> EditResult:
         with self._lock:
             undone = self.store.undo_last()
