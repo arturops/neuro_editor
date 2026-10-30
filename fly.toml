@@ -1,6 +1,6 @@
 # Change `app` to a name nobody else has, e.g. em-viewer-<yourname>.
-app = "em-viewer-proto"
-primary_region = "bos"   # pick one near you; run `fly platform regions`
+app = "em-viewer-cremi-a"
+primary_region = "ewr"   # pick one near you; run `fly platform regions`
 
 [build]
 
@@ -8,6 +8,7 @@ primary_region = "bos"   # pick one near you; run `fly platform regions`
   PORT = "8080"
   DATA_DIR = "/data"
   VIEWER_MODE = "per_user"
+  BLOCK_SIZE = "4,32,32"
   # PUBLIC_URL and VIEWER_TOKENS are secrets: see README, step "Deploy to Fly.io"
 
 [mounts]
@@ -22,6 +23,6 @@ primary_region = "bos"   # pick one near you; run `fly platform regions`
   min_machines_running = 1
 
 [[vm]]
-  memory = "1gb"
+  memory = "2gb"
   cpu_kind = "shared"
-  cpus = 1
+  cpus = 2
