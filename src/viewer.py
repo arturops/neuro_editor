@@ -355,8 +355,6 @@ class ViewerApp:
                         layer.segments = kept - {0}
             except Exception:  # noqa: BLE001
                 log.exception("Could not update selection for %s", session.label)
-            if session is not editor:
-                self._reset_seeds(session)  # old seeds may no longer be meaningful
 
     # ----- small helper ---------------------------------------------------
     def _say(self, session: Session, text: str, seconds: float = 10.0) -> None:

@@ -216,6 +216,21 @@ def test_reset_all_confirmation_expires_and_needs_edits(svc):
     assert "Nothing to confirm" in message(one) and svc.graph.object_count() == start - 1
 
 
+def test_seeds_are_private_to_each_user_and_survive_other_users_edits(svc):
+    app, _ = make_app(svc)
+    one, two = app.sessions[0], app.sessions[1]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-b", A_RIGHT)
+    # user2 edits the shared data: user1's seeds and markers stay put
+    press(app, two, "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    assert len(one.seeds["A"]) == 1 and len(one.seeds["B"]) == 1
+    assert "seeds-A" in one.viewer.state.layers and "seeds-B" in one.viewer.state.layers
+    # user2 has no seeds of their own, so user1's seeds do not count for user2's split
+    assert two.seeds == {"A": [], "B": []} and "seeds-A" not in two.viewer.state.layers
+    press(app, two, "em-split")
+    assert "at least one A seed" in message(two)
+
+
 def test_edit_log_uses_user_labels_not_secret_tokens(svc):
     app, _ = make_app(svc)
     press(app, app.sessions[1], "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
