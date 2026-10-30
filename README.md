@@ -22,7 +22,8 @@ Open your link, then:
 | `Shift+A` | Add a **seed A** where the mouse is (press several times for several seeds) |
 | `Shift+B` | Add a **seed B** where the mouse is |
 | `Shift+X` | **Split**: cut the thinnest connections that separate the A seeds from the B seeds |
-| `Shift+C` | Clear your seeds |
+| `Shift+C` | **Clear your seeds** |
+| `Shift+R` | **Remove one seed** under the mouse cursor |
 | `Shift+U` | **Undo** the last edit (by anyone) |
 
 How to split: put one or more A seeds on one part of the cell and one or more B seeds on the

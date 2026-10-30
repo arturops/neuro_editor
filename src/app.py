@@ -74,6 +74,7 @@ def main() -> None:
         port=settings.port,
         tokens=settings.tokens,
         mode=settings.viewer_mode,
+        block_size=settings.block_size,
     )
     links = app.start()
     print("=" * 70, flush=True)
