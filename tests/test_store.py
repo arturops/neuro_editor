@@ -34,6 +34,15 @@ def test_one_edit_can_hold_several_changes_and_undo_takes_them_all(db_path):
     assert store.undo_last() is None
 
 
+def test_undo_all_marks_every_edit_undone_but_keeps_the_log(db_path):
+    store, _ = EditStore.open(db_path, {"k": 1})
+    assert store.undo_all() == 0
+    store.append_edit("alice", [("add", 1, 2)])
+    store.append_edit("bob", [("remove", 3, 4), ("remove", 5, 6)])
+    assert store.undo_all() == 2
+    assert store.live_events() == [] and store.edit_count() == 0 and store.undo_last() is None
+
+
 def test_edit_ids_keep_growing_after_undo(db_path):
     store, _ = EditStore.open(db_path, {"k": 1})
     store.append_edit("a", [("add", 1, 2)])
