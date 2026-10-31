@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -44,13 +45,18 @@ KEYS = {
     "em-clear-seeds": "shift+keyc",
     "em-remove-seed": "shift+keyr",
     "em-undo": "shift+keyu",
+    "em-reset-all": "shift+keyz",
+    "em-confirm-yes": "shift+keyy",
+    "em-confirm-no": "shift+keyn",
 }
+RESET_CONFIRM_SECONDS = 15.0  # how long Shift+Y / Shift+N stay valid after Shift+Z
 SEED_LAYERS = {"A": "seeds-A", "B": "seeds-B"}
 SEED_COLORS = {"A": "#650303", "B": "#ffffff" }
 SEED_RADIUS_FRACTION = 0.08  # of the smallest block side, so a marker never outgrows its block
 HELP_TEXT = (
     "Shift+M merge the 2 selected objects | Shift+A / Shift+B add seed A / B under the mouse | "
-    "Shift+X split | Shift+C clear seeds | Shift+R remove seed under the mouse | Shift+U undo"
+    "Shift+X split | Shift+C clear seeds | Shift+R remove seed under the mouse | Shift+U undo | "
+    "Shift+Z reset ALL edits (then Shift+Y yes / Shift+N no)"
 )
 OVERLAP_HINT = "  Hover a seed and press Shift+R to remove it, or press Shift+C to clear all seeds."
 
@@ -66,6 +72,7 @@ class Session:
     seed_points: dict[str, list[tuple[int, int, int]]] = field(
         default_factory=lambda: {"A": [], "B": []}
     )  # (x, y, z) voxels where each seed was placed, for the markers
+    reset_deadline: float = 0.0  # time.monotonic() until which a Shift+Z reset can be confirmed
 
 
 class ViewerApp:
@@ -156,6 +163,9 @@ class ViewerApp:
             "em-clear-seeds": self._clear_seeds,
             "em-remove-seed": self._remove_seed,
             "em-undo": self._undo,
+            "em-reset-all": self._reset_all,
+            "em-confirm-yes": self._confirm_yes,
+            "em-confirm-no": self._confirm_no,
         }
         viewer = session.viewer
         for name, handler in handlers.items():
@@ -284,6 +294,40 @@ class ViewerApp:
         self._reset_seeds(session)
         self._say(session, "Seeds cleared.")
 
+    def _reset_all(self, session: Session, action_state) -> None:
+        """Step 1 of a full reset: ask. Nothing changes until the same user presses Shift+Y."""
+        count = self.service.edit_count()
+        if count == 0:
+            self._say(session, "No edits to reset.")
+            return
+        session.reset_deadline = time.monotonic() + RESET_CONFIRM_SECONDS
+        self._say(
+            session,
+            f"Reset ALL {count} edit{'s' if count != 1 else ''} for EVERY user? "
+            f"Press Shift+Y to confirm or Shift+N to cancel ({RESET_CONFIRM_SECONDS:.0f} s).",
+            seconds=RESET_CONFIRM_SECONDS,
+        )
+
+    def _confirm_yes(self, session: Session, action_state) -> None:
+        if time.monotonic() >= session.reset_deadline:  # also true when Shift+Z was never pressed
+            self._say(session, "Nothing to confirm. Press Shift+Z first to reset all edits.")
+            return
+        session.reset_deadline = 0.0
+        result = self.service.reset_all(user=session.label)
+        if result.ok:
+            self._reset_seeds(session)
+            for other in self.sessions:
+                if other is not session:
+                    self._say(other, f"{session.label} reset all edits.")
+        self._report(session, result)
+
+    def _confirm_no(self, session: Session, action_state) -> None:
+        if time.monotonic() >= session.reset_deadline:
+            self._say(session, "Nothing to cancel.")
+            return
+        session.reset_deadline = 0.0
+        self._say(session, "Reset cancelled. Nothing was changed.")
+
     def _undo(self, session: Session, action_state) -> None:
         self._report(session, self.service.undo(user=session.label))
 
@@ -311,8 +355,6 @@ class ViewerApp:
                         layer.segments = kept - {0}
             except Exception:  # noqa: BLE001
                 log.exception("Could not update selection for %s", session.label)
-            if session is not editor:
-                self._reset_seeds(session)  # old seeds may no longer be meaningful
 
     # ----- small helper ---------------------------------------------------
     def _say(self, session: Session, text: str, seconds: float = 10.0) -> None:

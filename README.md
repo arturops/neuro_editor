@@ -25,6 +25,17 @@ Open your link, then:
 | `Shift+C` | **Clear your seeds** |
 | `Shift+R` | **Remove one seed** under the mouse cursor |
 | `Shift+U` | **Undo** the last edit (by anyone) |
+| `Shift+Z` | **Reset all edits for every user** back to the original data. Asks first (see below) |
+| `Shift+Y` / `Shift+N` | **Yes / No** to the reset question. Only valid for 15 seconds after `Shift+Z`; `Shift+N` cancels |
+
+The same keys are listed in the help line shown in the viewer:
+`Shift+M merge the 2 selected objects | Shift+A / Shift+B add seed A / B under the mouse | Shift+X split | Shift+C clear seeds | Shift+R remove seed under the mouse | Shift+U undo | Shift+Z reset ALL edits (then Shift+Y yes / Shift+N no)`.
+
+**Reset all edits.** `Shift+Z` shows "Reset ALL N edits for EVERY user?". Press `Shift+Y` to go ahead or
+`Shift+N` to cancel; if you do nothing, the question expires after 15 seconds. A reset affects every
+viewer, not just yours, and cannot be undone with `Shift+U` (the old edits stay in the log in
+`edits.sqlite`, marked as undone). To start completely fresh instead, delete `edits.sqlite` in `DATA_DIR`
+and restart.
 
 How to split: put one or more A seeds on one part of the cell and one or more B seeds on the
 part you want separated, then press `Shift+X`. The cut follows the thinnest "neck" between them.

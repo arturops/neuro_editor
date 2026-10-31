@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -170,6 +171,64 @@ def test_second_seed_in_same_piece_is_refused_with_an_explanation(svc):
     press(app, one, "em-seed-a", A_LEFT)
     assert len(one.seeds["A"]) == 1 and len(one.seed_points["A"]) == 1
     assert "already placed" in message(one) and "Shift+R" in message(one)
+
+
+def merged_app(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    start = svc.graph.object_count()
+    press(app, one, "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    assert svc.graph.object_count() == start - 1
+    return app, one, start
+
+
+def test_reset_all_needs_confirmation_then_resets_everyone(svc):
+    app, one, start = merged_app(svc)
+    two = app.sessions[1]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-reset-all")
+    assert "Shift+Y" in message(one) and svc.graph.object_count() == start - 1  # only asked so far
+    press(app, one, "em-confirm-yes")
+    assert svc.graph.object_count() == start and svc.edit_count() == 0
+    assert shown(app, A_LEFT) != shown(app, C_SPOT)  # the picture is repainted
+    assert "Reset" in message(one) and one.seeds == {"A": [], "B": []}
+    assert "user1 reset all edits" in message(two)
+
+
+def test_reset_all_can_be_cancelled(svc):
+    app, one, start = merged_app(svc)
+    press(app, one, "em-reset-all")
+    press(app, one, "em-confirm-no")
+    assert "cancelled" in message(one) and svc.graph.object_count() == start - 1
+    press(app, one, "em-confirm-yes")  # the question is gone, so yes does nothing
+    assert "Nothing to confirm" in message(one) and svc.graph.object_count() == start - 1
+
+
+def test_reset_all_confirmation_expires_and_needs_edits(svc):
+    app, _ = make_app(svc)
+    one = app.sessions[0]
+    press(app, one, "em-reset-all")
+    assert "No edits to reset" in message(one)
+    app, one, start = merged_app(svc)
+    press(app, one, "em-reset-all")
+    one.reset_deadline = time.monotonic() - 1  # the 15 seconds are over
+    press(app, one, "em-confirm-yes")
+    assert "Nothing to confirm" in message(one) and svc.graph.object_count() == start - 1
+
+
+def test_seeds_are_private_to_each_user_and_survive_other_users_edits(svc):
+    app, _ = make_app(svc)
+    one, two = app.sessions[0], app.sessions[1]
+    press(app, one, "em-seed-a", A_LEFT)
+    press(app, one, "em-seed-b", A_RIGHT)
+    # user2 edits the shared data: user1's seeds and markers stay put
+    press(app, two, "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    assert len(one.seeds["A"]) == 1 and len(one.seeds["B"]) == 1
+    assert "seeds-A" in one.viewer.state.layers and "seeds-B" in one.viewer.state.layers
+    # user2 has no seeds of their own, so user1's seeds do not count for user2's split
+    assert two.seeds == {"A": [], "B": []} and "seeds-A" not in two.viewer.state.layers
+    press(app, two, "em-split")
+    assert "at least one A seed" in message(two)
 
 
 def test_edit_log_uses_user_labels_not_secret_tokens(svc):
