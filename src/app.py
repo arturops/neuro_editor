@@ -75,6 +75,7 @@ def main() -> None:
         tokens=settings.tokens,
         mode=settings.viewer_mode,
         block_size=settings.block_size,
+        mesh_simplify=settings.mesh_simplify,
     )
     links = app.start()
     print("=" * 70, flush=True)

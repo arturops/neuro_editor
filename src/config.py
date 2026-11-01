@@ -10,6 +10,17 @@ from pathlib import Path
 
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 VIEWER_MODES = ("per_user", "shared")
+_TRUE = ("1", "true", "yes", "on")
+_FALSE = ("0", "false", "no", "off")
+
+
+def _parse_bool(name: str, default: str) -> bool:
+    raw = os.environ.get(name, default).strip().lower()
+    if raw in _TRUE:
+        return True
+    if raw in _FALSE:
+        return False
+    raise ValueError(f"{name}={raw!r} must be one of {_TRUE + _FALSE}")
 
 
 def _parse_triple(name: str, default: str, allow_zero: bool) -> tuple[int, int, int]:
@@ -39,6 +50,7 @@ class Settings:
     block_size: tuple[int, int, int]  # (z, y, x)
     dataset_url: str
     hdf_name: str
+    mesh_simplify: bool = False  # simplify 3D meshes: smaller download, but several times slower to make
 
     @property
     def hdf_path(self) -> Path:
@@ -82,6 +94,7 @@ class Settings:
             block_size=_parse_triple("BLOCK_SIZE", "8,64,64", allow_zero=False),
             dataset_url=os.environ.get("DATASET_URL", "https://cremi.org/static/data/sample_A_20160501.hdf"),
             hdf_name=os.environ.get("HDF_NAME", "sample_A_20160501.hdf"),
+            mesh_simplify=_parse_bool("MESH_SIMPLIFY", "off"),
         )
 
     def short_token_warnings(self) -> list[str]:

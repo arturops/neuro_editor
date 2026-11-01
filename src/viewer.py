@@ -86,6 +86,7 @@ class ViewerApp:
         tokens: tuple[str, ...],
         mode: str,
         block_size: tuple[int, int, int] = (8, 64, 64),
+        mesh_simplify: bool = False,
         ng=None,
     ):
         self.ng = ng or importlib.import_module("neuroglancer")
@@ -93,6 +94,9 @@ class ViewerApp:
         self.public_url = public_url.rstrip("/")
         self.port = port
         self.mode = mode
+        # Simplifying 3D meshes halves their size but took ~5x longer to make for the biggest cells
+        # in our crop (measured), so it is off by default; -1 tells Neuroglancer to skip it.
+        self._mesh_options = None if mesh_simplify else {"max_quadrics_error": -1}
         self.tokens = tokens if mode == "per_user" else tokens[:1]
         self._tls = threading.local()  # remembers which session is making an edit
 
@@ -116,7 +120,9 @@ class ViewerApp:
 
     def _new_seg_volume(self):
         """A segmentation source over the live `_display` array (wrapped, not copied)."""
-        return self.ng.LocalVolume(data=self._display, dimensions=self.dims, volume_type="segmentation")
+        return self.ng.LocalVolume(
+            data=self._display, dimensions=self.dims, volume_type="segmentation", mesh_options=self._mesh_options
+        )
 
     # ----- start ----------------------------------------------------------
     def start(self) -> list[tuple[str, str]]:

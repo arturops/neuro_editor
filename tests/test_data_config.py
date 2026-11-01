@@ -52,6 +52,7 @@ def test_settings_defaults(monkeypatch):
     assert s.viewer_mode == "per_user" and len(s.tokens) == 3 and s.tokens_were_generated
     assert s.crop_size == (64, 512, 512) and s.block_size == (8, 64, 64) and s.crop_start == (30, 300, 300)
     assert str(s.db_path).endswith("edits.sqlite")
+    assert s.mesh_simplify is False
 
 
 def test_settings_from_env(monkeypatch):
@@ -66,9 +67,16 @@ def test_settings_from_env(monkeypatch):
     assert len(s.short_token_warnings()) == 1
 
 
+def test_mesh_simplify_setting(monkeypatch):
+    monkeypatch.setenv("MESH_SIMPLIFY", "On")
+    assert Settings.from_env().mesh_simplify is True
+    monkeypatch.setenv("MESH_SIMPLIFY", "false")
+    assert Settings.from_env().mesh_simplify is False
+
+
 @pytest.mark.parametrize(
     "name,value",
-    [("VIEWER_MODE", "everyone"), ("CROP_SIZE", "1,2"), ("CROP_SIZE", "0,5,5"), ("VIEWER_TOKENS", "a b"), ("VIEWER_TOKENS", "aa,aa")],
+    [("VIEWER_MODE", "everyone"), ("CROP_SIZE", "1,2"), ("CROP_SIZE", "0,5,5"), ("VIEWER_TOKENS", "a b"), ("VIEWER_TOKENS", "aa,aa"), ("MESH_SIMPLIFY", "maybe")],
 )
 def test_settings_reject_bad_values(monkeypatch, name, value):
     monkeypatch.setenv(name, value)

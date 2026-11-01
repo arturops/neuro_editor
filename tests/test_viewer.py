@@ -76,6 +76,16 @@ def test_merge_with_two_selected_objects_repaints_and_selects_result(svc):
     assert "Merged" in message(one)
 
 
+def test_mesh_simplification_is_off_unless_asked_for(svc):
+    app, _ = make_app(svc)
+    assert app._seg_volume.mesh_options == {"max_quadrics_error": -1}
+    press(app, app.sessions[0], "em-merge", selected={shown(app, A_LEFT), shown(app, C_SPOT)})
+    assert app._seg_volume.mesh_options == {"max_quadrics_error": -1}  # also on the replacement source
+    raw = np.zeros((6, 16, 40), dtype=np.uint8)
+    on = ViewerApp(svc, raw, (40.0, 4.0, 4.0), "https://x.dev", 8080, ("t",), "shared", mesh_simplify=True, ng=fake)
+    assert on._seg_volume.mesh_options is None  # Neuroglancer's own default
+
+
 def test_merge_needs_exactly_two_selected(svc):
     app, _ = make_app(svc)
     press(app, app.sessions[0], "em-merge", selected={1})
