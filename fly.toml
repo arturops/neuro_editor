@@ -1,28 +1,33 @@
-# Change `app` to a name nobody else has, e.g. em-viewer-<yourname>.
-app = "em-viewer-cremi-a"
-primary_region = "ewr"   # pick one near you; run `fly platform regions`
+# fly.toml app configuration file generated for em-viewer-cremi-a on 2026-10-31T19:06:37-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'em-viewer-cremi-a'
+primary_region = 'ewr'
 
 [build]
-
 [env]
-  PORT = "8080"
-  DATA_DIR = "/data"
-  VIEWER_MODE = "per_user"
-  BLOCK_SIZE = "4,32,32"
-  # PUBLIC_URL and VIEWER_TOKENS are secrets: see README, step "Deploy to Fly.io"
+  BLOCK_SIZE = '8,64,64'
+  CROP_SIZE = '16,512,512'
+  MESH_SIMPLIFY = 'off'
+  DATA_DIR = '/data'
+  PORT = '8080'
+  VIEWER_MODE = 'per_user'
 
-[mounts]
-  source = "em_data"
-  destination = "/data"
+[[mounts]]
+  source = 'data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
 [[vm]]
-  memory = "2gb"
-  cpu_kind = "shared"
+  memory = '2gb'
+  cpu_kind = 'shared'
   cpus = 2
+  memory_mb = 2048

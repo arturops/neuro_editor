@@ -86,6 +86,7 @@ class ViewerApp:
         tokens: tuple[str, ...],
         mode: str,
         block_size: tuple[int, int, int] = (8, 64, 64),
+        mesh_simplify: bool = False,
         ng=None,
     ):
         self.ng = ng or importlib.import_module("neuroglancer")
@@ -93,6 +94,9 @@ class ViewerApp:
         self.public_url = public_url.rstrip("/")
         self.port = port
         self.mode = mode
+        # Simplifying 3D meshes halves their size but took ~5x longer to make for the biggest cells
+        # in our crop (measured), so it is off by default; -1 tells Neuroglancer to skip it.
+        self._mesh_options = None if mesh_simplify else {"max_quadrics_error": -1}
         self.tokens = tokens if mode == "per_user" else tokens[:1]
         self._tls = threading.local()  # remembers which session is making an edit
 
@@ -109,10 +113,16 @@ class ViewerApp:
         self._display = np.ascontiguousarray(service.graph.lut[self._bricks_xyz])  # what Neuroglancer shows
         em_xyz = np.ascontiguousarray(raw_zyx.transpose(2, 1, 0))
         self._em_volume = self.ng.LocalVolume(data=em_xyz, dimensions=self.dims, volume_type="image")
-        self._seg_volume = self.ng.LocalVolume(data=self._display, dimensions=self.dims, volume_type="segmentation")
+        self._seg_volume = self._new_seg_volume()
 
         self.sessions: list[Session] = []
         service.subscribe(self._on_change)
+
+    def _new_seg_volume(self):
+        """A segmentation source over the live `_display` array (wrapped, not copied)."""
+        return self.ng.LocalVolume(
+            data=self._display, dimensions=self.dims, volume_type="segmentation", mesh_options=self._mesh_options
+        )
 
     # ----- start ----------------------------------------------------------
     def start(self) -> list[tuple[str, str]]:
@@ -340,12 +350,16 @@ class ViewerApp:
         """Called by EditService (already holding its lock) after every saved change."""
         lut = self.service.graph.lut
         self._display[...] = lut[self._bricks_xyz]  # repaint from the cheat sheet
-        self._seg_volume.invalidate()  # tells Neuroglancer to refetch pictures and re-make 3D meshes
+        # A brand-new source, not invalidate(): browsers keep the 3D mesh they already have for an
+        # object number, and a merge keeps one of the old numbers, so the merged object's 3D shape
+        # would stay stale until a page reload. A new source makes them fetch every mesh again.
+        self._seg_volume = self._new_seg_volume()
         editor = getattr(self._tls, "session", None)
         for session in self.sessions:
             try:
                 with session.viewer.txn() as s:
                     layer = s.layers[SEG_LAYER]
+                    layer.source = self._seg_volume
                     if session is editor and result.select:
                         layer.segments = set(result.select)
                     else:
