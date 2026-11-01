@@ -126,6 +126,7 @@ to your `https://<name>.onrender.com` address and `VIEWER_TOKENS` as above.
 | `CROP_START` | `30,300,300` | Where the crop starts (z,y,x) |
 | `CROP_SIZE` | `64,512,512` | Crop size (z,y,x). Smaller is faster and uses less memory |
 | `BLOCK_SIZE` | `8,64,64` | Brick size (z,y,x) used to cut cells into small pieces |
+| `MESH_SIMPLIFY` | `off` | `on` simplifies 3D meshes: about half the download, but several times slower to make (about 5 s vs 1 s for the biggest cell in the default crop). Leave it `off` unless your connection is slow |
 | `DATASET_URL` | CREMI Sample A link | Where to download from if the file is missing |
 | `HDF_NAME` | `sampleA__20160501.hdf` | File name inside `DATA_DIR` |
 
