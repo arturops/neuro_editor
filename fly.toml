@@ -9,7 +9,8 @@ primary_region = 'ewr'
 [build]
 [env]
   BLOCK_SIZE = '8,64,64'
-  CROP_SIZE= '16,512,512'
+  CROP_SIZE = '16,512,512'
+  MESH_SIMPLIFY = 'off'
   DATA_DIR = '/data'
   PORT = '8080'
   VIEWER_MODE = 'per_user'
