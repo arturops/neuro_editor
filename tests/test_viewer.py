@@ -13,7 +13,13 @@ def make_app(svc, mode="per_user", tokens=("tok-one", "tok-two", "tok-three")):
     raw = np.zeros((6, 16, 40), dtype=np.uint8)
     app = ViewerApp(svc, raw, (40.0, 4.0, 4.0), "https://em.example.fly.dev/", 8080, tokens, mode, ng=fake)
     links = app.start()
+    app.volumes_at_start = fake.LocalVolume.created
     return app, links
+
+
+def reloads(app):
+    """How many times the segmentation source has been swapped for a new one since start-up."""
+    return fake.LocalVolume.created - app.volumes_at_start
 
 
 def press(app, session, action, spot=None, selected=()):
@@ -63,7 +69,9 @@ def test_merge_with_two_selected_objects_repaints_and_selects_result(svc):
     assert shown(app, A_LEFT) == a and shown(app, C_SPOT) == c
     press(app, one, "em-merge", selected={a, c})
     assert shown(app, A_LEFT) == shown(app, C_SPOT)
-    assert app._seg_volume.invalidations == 1
+    assert reloads(app) == 1
+    # every viewer now points at the new source, so browsers drop their cached 3D meshes
+    assert all(s.viewer.state.layers[SEG_LAYER].source is app._seg_volume for s in app.sessions)
     assert one.viewer.state.layers[SEG_LAYER].segments == {shown(app, A_LEFT)}
     assert "Merged" in message(one)
 
@@ -72,7 +80,7 @@ def test_merge_needs_exactly_two_selected(svc):
     app, _ = make_app(svc)
     press(app, app.sessions[0], "em-merge", selected={1})
     assert "exactly two" in message(app.sessions[0])
-    assert app._seg_volume.invalidations == 0
+    assert reloads(app) == 0
 
 
 def test_split_with_seeds_repaints_both_halves(svc):
@@ -92,7 +100,7 @@ def test_split_with_seeds_repaints_both_halves(svc):
     assert one.seeds == {"A": [], "B": []}
     # the other user keeps looking at "their" object: the half that holds its old number
     assert two.viewer.state.layers[SEG_LAYER].segments == {whole}
-    assert app._seg_volume.invalidations == 1
+    assert reloads(app) == 1
 
 
 def test_undo_restores_the_picture(svc):
@@ -103,7 +111,7 @@ def test_undo_restores_the_picture(svc):
     assert not (app._display == start).all()
     press(app, one, "em-undo")
     assert (app._display == start).all()
-    assert app._seg_volume.invalidations == 2
+    assert reloads(app) == 2
 
 
 def test_seed_on_empty_space_or_without_mouse_is_refused(svc):
@@ -119,7 +127,7 @@ def test_split_without_seeds_explains_itself_and_changes_nothing(svc):
     app, _ = make_app(svc)
     press(app, app.sessions[0], "em-split")
     assert "at least one A seed" in message(app.sessions[0])
-    assert app._seg_volume.invalidations == 0
+    assert reloads(app) == 0
 
 
 def test_seeds_on_different_objects_warn(svc):

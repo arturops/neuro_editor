@@ -109,10 +109,14 @@ class ViewerApp:
         self._display = np.ascontiguousarray(service.graph.lut[self._bricks_xyz])  # what Neuroglancer shows
         em_xyz = np.ascontiguousarray(raw_zyx.transpose(2, 1, 0))
         self._em_volume = self.ng.LocalVolume(data=em_xyz, dimensions=self.dims, volume_type="image")
-        self._seg_volume = self.ng.LocalVolume(data=self._display, dimensions=self.dims, volume_type="segmentation")
+        self._seg_volume = self._new_seg_volume()
 
         self.sessions: list[Session] = []
         service.subscribe(self._on_change)
+
+    def _new_seg_volume(self):
+        """A segmentation source over the live `_display` array (wrapped, not copied)."""
+        return self.ng.LocalVolume(data=self._display, dimensions=self.dims, volume_type="segmentation")
 
     # ----- start ----------------------------------------------------------
     def start(self) -> list[tuple[str, str]]:
@@ -340,12 +344,16 @@ class ViewerApp:
         """Called by EditService (already holding its lock) after every saved change."""
         lut = self.service.graph.lut
         self._display[...] = lut[self._bricks_xyz]  # repaint from the cheat sheet
-        self._seg_volume.invalidate()  # tells Neuroglancer to refetch pictures and re-make 3D meshes
+        # A brand-new source, not invalidate(): browsers keep the 3D mesh they already have for an
+        # object number, and a merge keeps one of the old numbers, so the merged object's 3D shape
+        # would stay stale until a page reload. A new source makes them fetch every mesh again.
+        self._seg_volume = self._new_seg_volume()
         editor = getattr(self._tls, "session", None)
         for session in self.sessions:
             try:
                 with session.viewer.txn() as s:
                     layer = s.layers[SEG_LAYER]
+                    layer.source = self._seg_volume
                     if session is editor and result.select:
                         layer.segments = set(result.select)
                     else:

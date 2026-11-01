@@ -20,7 +20,10 @@ class CoordinateSpace:
 
 
 class LocalVolume:
+    created = 0  # how many volumes exist so far; a swap of the layer's source creates a new one
+
     def __init__(self, data, dimensions=None, volume_type=None):
+        LocalVolume.created += 1
         self.data, self.dimensions, self.volume_type = data, dimensions, volume_type
         self.invalidations = 0
 
